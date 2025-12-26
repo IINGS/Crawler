@@ -3,6 +3,8 @@ import re
 import requests
 import json
 import config
+import time
+import random
 
 class DataProcessor:
     def __init__(self, source_name):
@@ -65,24 +67,62 @@ class DataProcessor:
         return record
 
     def send_to_gas(self, data_list):
+        """GAS로 데이터를 전송하되, 실패 시 최대 5번까지 재시도합니다."""
         if not data_list:
             return None
-        try:
-            payload = {'data': data_list}
-            headers = {'Content-Type': 'application/json'}
-            
-            response = requests.post(
-                self.webhook_url, 
-                data=json.dumps(payload), 
-                headers=headers,
-                timeout=30 # 타임아웃 넉넉하게
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"[전송 실패] 상태 코드: {response.status_code}")
-                return None
-        except Exception as e:
-            print(f"[전송 에러] {e}")
-            return None
+
+        max_retries = 5  # 최대 5번 재시도
+        base_wait = 2    # 기본 대기 시간 2초
+
+        for attempt in range(max_retries):
+            try:
+                payload = {'data': data_list}
+                headers = {'Content-Type': 'application/json'}
+                
+                # 타임아웃을 넉넉하게 60초로 설정 (GAS Lock 대기 시간 고려)
+                response = requests.post(
+                    self.webhook_url, 
+                    data=json.dumps(payload), 
+                    headers=headers,
+                    timeout=60 
+                )
+                
+                # 성공 (200 OK)
+                if response.status_code == 200:
+                    resp_json = response.json()
+                    
+                    # GAS 내부에서 "error"라고 응답한 경우 (Lock 실패 등)
+                    if resp_json.get("result") == "error":
+                        error_msg = resp_json.get("msg", "Unknown Error")
+                        # Lock 관련 에러면 재시도
+                        if "Lock" in error_msg or "Timeout" in error_msg:
+                            wait_time = base_wait * (attempt + 1) + random.uniform(0, 1)
+                            print(f"    [GAS 붐빔] 대기열 꽉 참. {wait_time:.1f}초 후 재시도 ({attempt+1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            # 로직 에러면 재시도 없이 바로 출력
+                            print(f"    [GAS 에러] {error_msg}")
+                            return resp_json
+
+                    return resp_json
+
+                # 서버 에러 (500, 502, 503 등) -> 재시도 대상
+                elif response.status_code >= 500:
+                    wait_time = base_wait * (attempt + 1)
+                    print(f"    [서버 에러 {response.status_code}] {wait_time}초 후 재시도...")
+                    time.sleep(wait_time)
+                    continue
+                
+                else:
+                    print(f"    [전송 실패] 상태 코드: {response.status_code}")
+                    return None
+
+            except Exception as e:
+                # 네트워크 연결 에러 등
+                wait_time = base_wait * (attempt + 1)
+                print(f"    [통신 에러] {e} -> {wait_time}초 후 재시도...")
+                time.sleep(wait_time)
+        
+        print("    !! [최종 실패] 5번 시도했으나 전송하지 못했습니다. (데이터 유실 주의)")
+        return None
