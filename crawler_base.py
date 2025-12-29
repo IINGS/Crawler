@@ -10,9 +10,10 @@ from state_manager import StateManager
 from smart_extractor import SmartExtractor
 
 class BaseCrawler:
-    def __init__(self, group_name, source_name):
+    def __init__(self, group_name, source_name, checkpoint_key=None):
         self.group_name = group_name
         self.processor = DataProcessor(source_name)
+        self.save_key = checkpoint_key if checkpoint_key else group_name
         self.state = StateManager(group_name)
         self.smart_engine = SmartExtractor()
 
