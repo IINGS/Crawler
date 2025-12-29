@@ -4,7 +4,7 @@ import requests
 import concurrent.futures
 import time
 import random
-from googlesearch import search
+#from googlesearch import search
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
@@ -17,11 +17,11 @@ class SmartExtractor:
         
         self.email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
         
-        # [수정] 국내 국번 제한 (011~019 제외, 010만 허용)
+        # 국내 국번 제한 (011~019 제외, 010만 허용)
         # 02, 03x~06x, 010, 070, 050x, 080
         self.area_code_pattern = r"(?:02|0[3-6]\d|010|070|050\d?|080)"
 
-        # [핵심 수정] 전화번호 정규식 (대표번호 패턴 복구 + 010 제한 적용)
+        # 전화번호 정규식 (대표번호 패턴 복구 + 010 제한 적용)
         self.phone_regex = re.compile(r"""
             (?<!\d) # 앞에 숫자가 없어야 함
             (?:
@@ -33,7 +33,7 @@ class SmartExtractor:
                 [\s\.\-]*
                 (?P<intl_end>\d{4})
                 |
-                # 패턴 B: 전국 대표번호 (15xx, 16xx, 18xx) - [복구됨]
+                # 패턴 B: 전국 대표번호 (15xx, 16xx, 18xx)
                 # 예: 1522-1131, 1588-7000, 1688-2934, 1899-3278
                 (?P<rep_head>(?:15|16|18)\d{2})
                 [\s\.\-]*
@@ -67,23 +67,6 @@ class SmartExtractor:
             'work.go.kr', 'linkedin.com', 'youtube.com', 'namu.wiki', 'nicebiz', 'kedkorea',
             'crediv.co.kr', 'kisreport.com', 'blog.naver.com'
         ]
-
-    def search_google(self, company_name):
-        try:
-            time.sleep(random.uniform(1.0, 2.5))
-            query = f"{company_name}"
-            results = search(query, num_results=5, lang="ko")
-            
-            checked_count = 0
-            for url in results:
-                if checked_count >= 3: return ""
-                if any(blocked in url for blocked in self.blocked_domains):
-                    checked_count += 1
-                    continue
-                return url
-        except Exception:
-            return ""
-        return ""
 
     def get_text_with_frames(self, soup, base_url):
         text_content = ""
@@ -225,29 +208,19 @@ class SmartExtractor:
             return False, info
 
     def process_company(self, company_data):
-        comp_name = company_data.get('기업명', '')
         url = company_data.get('홈페이지', '')
 
         clean_url = str(url).strip().lower()
         is_invalid_url = (not url) or (url == "-") or (clean_url in ['http://', 'https://', ''])
         
         if is_invalid_url:
-            found_url = self.search_google(comp_name)
-            if found_url:
-                url = found_url
-                company_data['홈페이지'] = url
+            return company_data
 
         success = False
         contact_info = {'email': set(), 'tel': set(), 'fax': set()}
 
         if url:
             success, contact_info = self.extract_from_url(url)
-            if not success:
-                new_url = self.search_google(comp_name)
-                if new_url and new_url != url:
-                    url = new_url
-                    company_data['홈페이지'] = new_url
-                    success, contact_info = self.extract_from_url(new_url)
 
         existing_email = company_data.get('이메일', '')
         if existing_email: contact_info['email'].add(existing_email)
