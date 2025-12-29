@@ -16,14 +16,21 @@ class SmartExtractor:
         
         self.email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
         
-        # 국내 국번 제한 (011~019 제외, 010만 허용)
-        self.area_code_pattern = r"(?:02|0[3-6]\d|010|070|050\d?|080)"
+        # [핵심 수정 1] 존재하는 국번만 허용 (Whitelist)
+        # 잘못된 국번(045, 069, 023 등)이 들어오는 것을 방지
+        # 02: 서울
+        # 031~033: 경기/인천/강원
+        # 041~044: 충청/대전/세종 (045, 048 등 제외됨)
+        # 051~055: 경상/부산/대구/울산
+        # 061~064: 전라/광주/제주 (069 제외됨)
+        # 010: 휴대폰 (011~019 제외)
+        # 070: 인터넷전화, 050: 안심번호, 080: 수신자부담, 060: 정보제공
+        self.area_code_pattern = r"(?:02|03[1-3]|04[1-4]|05[1-5]|06[1-4]|010|070|080|050\d|060)"
 
-        # 전화번호 정규식
         self.phone_regex = re.compile(r"""
             (?<!\d)
             (?:
-                # 패턴 A: 국제전화
+                # 패턴 A: 국제전화 (+82)
                 (?:\+|00)82[\s\.\-]*\(?0?\)?[\s\.\-]*
                 (?P<intl_area>\d{2,3})
                 [\s\.\-\)]*
@@ -31,7 +38,7 @@ class SmartExtractor:
                 [\s\.\-]*
                 (?P<intl_end>\d{4})
                 |
-                # 패턴 B: 대표번호
+                # 패턴 B: 전국 대표번호 (15xx, 16xx, 18xx)
                 (?P<rep_head>(?:15|16|18)\d{2})
                 [\s\.\-]*
                 (?P<rep_tail>\d{4})
@@ -53,10 +60,18 @@ class SmartExtractor:
         
         self.fax_keywords = ['fax', 'facsimile', 'f.', 'f:', 'fx', '팩스']
         
-        # [수정됨] 하단 정보 수집을 위해 '202', 'date', '사업자' 등 제거 완료
+        # 부정 키워드 (은행/계좌번호 등 오탐지 방지)
         self.negative_keywords = [
             '계좌', '은행', '예금', 'bank', 'account', 'iban', 'swift', '예금주',
             'price'
+        ]
+        
+        # [핵심 수정 2] 쓰레기 번호 목록 강화
+        # 웹사이트 템플릿에 자주 쓰이는 가짜 번호들
+        self.garbage_full_numbers = [
+            '02-1212-2121', '02-1231-2132', '010-101-0101', '010-0000-0000', 
+            '02-000-0000', '02-1111-1111', '010-1234-5678', '010-1111-2222',
+            '000-0000-0000', '123-456-7890', '070-1234-5678'
         ]
 
         self.blocked_domains = [
@@ -66,21 +81,24 @@ class SmartExtractor:
             'crediv.co.kr', 'kisreport.com', 'blog.naver.com'
         ]
 
-    # [신규 추가] 가짜 번호(0000, 1234 등) 판별 함수
-    def is_garbage_number(self, mid, end):
-        if not mid or not end: return False
+    def is_garbage_number(self, mid, end, full_formatted):
+        if not mid or not end: return True
         
-        # 1. 단순 연속/반복 숫자 패턴
+        # 1. 완전 일치 블랙리스트 확인
+        if full_formatted in self.garbage_full_numbers:
+            return True
+
+        # 2. 단순 연속/반복 숫자 패턴
         garbage_patterns = ['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '1234', '2345', '5678', '4321']
         
         if mid in garbage_patterns or end in garbage_patterns:
             return True
             
-        # 2. 국번과 뒷자리가 똑같은 경우 (예: 1234-1234)
+        # 3. 국번과 뒷자리가 똑같은 경우 (예: 1234-1234)
         if mid == end:
             return True
             
-        # 3. 너무 짧은 번호
+        # 4. 너무 짧은 번호 (오탐지 방지)
         if len(mid) < 3 or len(end) < 4:
             return True
 
@@ -104,7 +122,6 @@ class SmartExtractor:
         except: pass
         return text_content
     
-    # [유지] JS 파일 파싱 함수
     def get_js_content(self, soup, base_url):
         js_text = ""
         try:
@@ -114,7 +131,6 @@ class SmartExtractor:
                 if not src: continue
                 
                 lower_src = src.lower()
-                # 필터링 강화
                 if any(x in lower_src for x in ['google', 'facebook', 'kakao', 'naver', 'analytics', 'ad', 'tracker', 'jquery', 'bootstrap', 'swiper', 'slick', 'aos', 'gsap']):
                     continue
 
@@ -145,31 +161,35 @@ class SmartExtractor:
             raw_num = href.replace('tel:', '').strip()
             clean_num = re.sub(r'[^0-9]', '', raw_num)
             
+            # 대표번호 (15xx-xxxx)
             if len(clean_num) == 8 and clean_num.startswith(('15', '16', '18')):
                 fmt_num = f"{clean_num[:4]}-{clean_num[4:]}"
                 info_dict['tel'].add(fmt_num)
             
+            # 일반 번호 (9~11자리)
             elif len(clean_num) >= 9 and len(clean_num) <= 11:
+                # 02-xxxx-xxxx
                 if clean_num.startswith('02') and len(clean_num) >= 9:
                     mid_part = clean_num[2:-4]
                     end_part = clean_num[-4:]
-                    # [필터 적용]
-                    if not self.is_garbage_number(mid_part, end_part):
-                        fmt_num = f"{clean_num[:2]}-{mid_part}-{end_part}"
-                        info_dict['tel'].add(fmt_num)
+                    full_fmt = f"02-{mid_part}-{end_part}"
+                    
+                    if not self.is_garbage_number(mid_part, end_part, full_fmt):
+                        info_dict['tel'].add(full_fmt)
 
+                # 031, 010, 070 등
                 elif len(clean_num) >= 10:
                     prefix = clean_num[:3]
+                    # [010 제한] tel 링크에서도 011~019는 제외
                     if prefix.startswith('01') and prefix != '010':
                         continue
                     
                     mid_part = clean_num[3:-4]
                     end_part = clean_num[-4:]
+                    full_fmt = f"{prefix}-{mid_part}-{end_part}"
                     
-                    # [필터 적용]
-                    if not self.is_garbage_number(mid_part, end_part):
-                        fmt_num = f"{clean_num[:3]}-{mid_part}-{end_part}"
-                        info_dict['tel'].add(fmt_num)
+                    if not self.is_garbage_number(mid_part, end_part, full_fmt):
+                        info_dict['tel'].add(full_fmt)
 
         for a in soup.select('a[href^="mailto:"]'):
             href = a.get('href', '')
@@ -208,14 +228,13 @@ class SmartExtractor:
             elif groups['dom_area_raw']:
                 area, mid, end = groups['dom_area_raw'], groups['dom_mid_raw'], groups['dom_end_raw']
             
-            # [필터 적용] 여기가 핵심 (가짜 번호 제외)
-            if self.is_garbage_number(mid, end):
+            full_number = self.normalize_phone(area, mid, end)
+
+            # [수정] 가짜 번호 판별 시 full_number도 함께 전달
+            if self.is_garbage_number(mid, end, full_number):
                 continue
 
-            full_number = self.normalize_phone(area, mid, end)
-            
             start_pos = match.start()
-            # [수정] 탐지 범위 조정 (오탐지 감소)
             context_prev = text_lower[max(0, start_pos - 20):start_pos]
             context_next = text_lower[match.end():min(len(text_lower), match.end() + 10)]
             combined_context = context_prev + " " + context_next
