@@ -86,6 +86,37 @@ class SmartExtractor:
         except: pass
         return text_content
 
+    def get_js_content(self, soup, base_url):
+        js_text = ""
+        try:
+            scripts = soup.select('script[src]')
+            for script in scripts:
+                src = script.get('src')
+                if not src: continue
+                
+                # 외부 광고/추적 스크립트 등은 제외 (속도 향상 및 노이즈 제거)
+                lower_src = src.lower()
+                if any(x in lower_src for x in ['google', 'facebook', 'kakao', 'naver', 'analytics', 'ad', 'tracker', 'jquery']):
+                    continue
+
+                # 사이트 내부의 핵심 로직 파일(main, bundle, app 등)만 타겟팅
+                # 또는 상대 경로로 시작하는 파일들
+                if not (src.startswith('/') or './' in src or 'main' in lower_src or 'bundle' in lower_src or 'app' in lower_src or 'chunk' in lower_src):
+                    continue
+
+                js_url = urljoin(base_url, src)
+                try:
+                    # JS 파일 다운로드 (타임아웃 짧게)
+                    js_resp = requests.get(js_url, headers=self.headers, timeout=5)
+                    if js_resp.status_code == 200:
+                        # JS 코드를 텍스트 더미로 간주하고 추가
+                        js_text += " " + js_resp.text
+                except:
+                    continue
+        except Exception:
+            pass
+        return js_text
+
     def normalize_phone(self, area, mid, end):
         """전화번호 포맷 통일"""
         # 대표번호인 경우 (mid가 없음)
@@ -133,6 +164,11 @@ class SmartExtractor:
 
     def extract_info_from_text(self, text, info_dict):
         if not text: return
+
+        try:
+            text = text.encode('utf-8').decode('unicode_escape')
+        except:
+            pass
         
         text_lower = text.lower()
         
@@ -185,20 +221,27 @@ class SmartExtractor:
         if not url.startswith('http'): url = 'http://' + url
 
         try:
-            resp = requests.get(url, headers=self.headers, timeout=15)
+            resp = requests.get(url, headers=self.headers, timeout=10)
             resp.encoding = resp.apparent_encoding 
             
             if resp.status_code != 200: return False, info
 
             soup = BeautifulSoup(resp.text, 'html.parser')
             
+            # 1. 태그 추출
             self.extract_links_from_soup(soup, info)
             
+            # 2. 텍스트 추출
             visible_text = soup.get_text(separator=' ', strip=True)
             frame_text = self.get_text_with_frames(soup, url)
+            
+            # JS 파일 내용을 가져오는 코드
+            js_text = self.get_js_content(soup, url)
+            
             raw_source_text = resp.text 
 
-            combined_text = f"{visible_text} {frame_text} {raw_source_text}"
+            # js_text를 검색 대상에 포함
+            combined_text = f"{visible_text} {frame_text} {raw_source_text} {js_text}"
             
             self.extract_info_from_text(combined_text, info)
                     
