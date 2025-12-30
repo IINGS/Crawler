@@ -1,8 +1,15 @@
 #config.py
+
+"""
+사전 설정할 파일.
+Google Sheets랑 연동된 Google Apps Script 배포 후 URL 복사 필요 (현재 URL은 테스트 종료시 파기할 것임)
+USER_AGENTS는 건들 필요 굳이 없음
+"""
+
 # 구글 앱스 스크립트 배포 URL (배포 후 주소 확인 필수)
 WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxIh40gm3y_ork08OQQFfSTXun2ZljiviwHAM6omhaehAIH1o0xoeplAUbrpYqOD4QoRA/exec'
 
-# 크롤링 봇 탐지 회피용 헤더 (PC 버전 10종)
+# 크롤링 봇 탐지 회피용 헤더 (PC 버전 10종) 많을수록 탐지 확률 감소
 USER_AGENTS = [
     # Chrome (Windows)
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
