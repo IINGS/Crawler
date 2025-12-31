@@ -52,26 +52,36 @@ class CretopCrawler(BaseCrawler):
             dialog.accept()
         except: pass
 
-    def _human_click(self, locator):
+    # [수정] 단순 클릭 속도 향상 (체크박스 등)
+    def _human_click(self, locator, is_fast=True):
         try:
             locator.wait_for(state="visible", timeout=5000)
             box = locator.bounding_box()
             if not box:
                 locator.click(force=True)
-                time.sleep(1.0)
+                time.sleep(0.2)
                 return
 
             target_x = box['x'] + box['width'] / 2 + random.uniform(-3, 3)
             target_y = box['y'] + box['height'] / 2 + random.uniform(-3, 3)
 
-            self.page.mouse.move(target_x, target_y, steps=random.randint(10, 25))
-            time.sleep(random.uniform(0.5, 1.0))
+            # 이동 속도: 빠름(5~10) / 보통(10~20)
+            steps = random.randint(5, 10) if is_fast else random.randint(15, 25)
+            self.page.mouse.move(target_x, target_y, steps=steps)
+            
+            if not is_fast: time.sleep(random.uniform(0.3, 0.5)) # 호버링
+            
             self.page.mouse.click(target_x, target_y)
-            time.sleep(random.uniform(1.5, 2.5))
+            
+            # 클릭 후 대기: 빠름(0.3~0.6) / 보통(1.5~2.5)
+            if is_fast:
+                time.sleep(random.uniform(0.3, 0.6))
+            else:
+                time.sleep(random.uniform(1.5, 2.5))
             
         except:
             locator.click(force=True)
-            time.sleep(1.0)
+            time.sleep(0.5)
 
     def _setup_search_conditions(self):
         target_url = "https://www.cretop.com/ET/SS/ETSS070M1"
@@ -80,7 +90,7 @@ class CretopCrawler(BaseCrawler):
         try:
             self.page.goto(target_url, wait_until="domcontentloaded", timeout=60000)
             self.page.wait_for_load_state("networkidle")
-            time.sleep(3.0)
+            time.sleep(2.0)
         except: pass
 
         login_check_xpath = "xpath=//*[contains(text(), '정상')]"
@@ -94,7 +104,7 @@ class CretopCrawler(BaseCrawler):
             except:
                 return False
 
-        # 체크박스
+        # [수정] 체크박스 - 빠르게 클릭
         target_labels = ["정상", "소기업", "개인사업자"]
         for label_text in target_labels:
             try:
@@ -105,51 +115,61 @@ class CretopCrawler(BaseCrawler):
                     el = self.page.locator(xpath)
                 
                 if el.count() > 0 and not el.is_checked():
-                    self._human_click(el)
+                    self._human_click(el, is_fast=True) # Fast mode
                     self.log(f"Checking [{label_text}]")
-                    time.sleep(1.0)
+                    time.sleep(0.1) # 대기 시간 최소화
             except: pass
 
-        # 조회 버튼
+        # 조회 버튼 - (여기는 안전하게 천천히)
         self.log("조회 버튼 클릭 (5초 대기)...")
         try:
-            time.sleep(2.0)
+            time.sleep(1.0)
             search_btn = self.page.locator("xpath=//button[contains(., '조회하기')]")
             if search_btn.count() > 0:
-                self._human_click(search_btn)
+                self._human_click(search_btn, is_fast=False) # Slow mode
+                
                 self.page.wait_for_load_state("networkidle")
                 self.log("  - 결과 로딩 중... (안전하게 5초 대기)")
                 time.sleep(5.0) 
+                
                 try:
-                    self.page.wait_for_selector("div.result-txt-wrap", state="attached", timeout=30000) # 타임아웃 30초로 증가
+                    self.page.wait_for_selector("div.result-txt-wrap", state="attached", timeout=30000)
                     self.log("  ✅ 결과 리스트 포착됨")
                 except:
                     self.log("  ⚠️ 결과 리스트 늦음/없음")
-                time.sleep(2.0) 
+                time.sleep(1.0) 
             else:
                 return False
         except: return False
 
-        # 100개 보기
+        # [수정] 100개 보기 - 빠르게
         try:
-            self.log("100개 보기 설정 (천천히)...")
-            time.sleep(2.0)
+            self.log("100개 보기 설정 (빠르게)...")
+            
             select_box = self.page.locator('#pageCount')
             select_box.wait_for(state="visible", timeout=5000)
             select_box.scroll_into_view_if_needed()
-            self._human_click(select_box)
-            time.sleep(2.0)
+            
+            self._human_click(select_box, is_fast=True) # 드롭다운 클릭 빠르게
+            time.sleep(0.5) 
+            
+            # 키보드 입력 빠르게 (0.05초 간격)
             for _ in range(3):
                 self.page.keyboard.press("ArrowDown")
-                time.sleep(0.5)
+                time.sleep(0.05) 
+            
             self.page.keyboard.press("Enter")
             self.page.wait_for_load_state("networkidle")
+            
+            # 갱신 후 대기는 유지 (세션 보호)
             self.log("  - 리스트 갱신 대기 (5초)...")
             time.sleep(5.0)
+            
             try:
                 self.page.wait_for_function("document.querySelectorAll('div.result-txt-wrap').length > 15", timeout=10000)
                 self.log("  ✅ 100개 리스트 갱신 확인됨")
             except: pass
+
             return True
         except: return True
 
@@ -179,10 +199,10 @@ class CretopCrawler(BaseCrawler):
                 self.log(f"  - 그룹 이동...")
                 next_group_btn = self.page.locator('button.next:has(span:text-is("다음그룹"))')
                 if next_group_btn.is_visible():
-                    time.sleep(1.5)
+                    time.sleep(1.0)
                     next_group_btn.click(force=True)
                     self.page.wait_for_load_state("networkidle")
-                    time.sleep(3.0)
+                    time.sleep(2.0)
                 else:
                     self.log("  ⚠️ 다음 그룹 버튼 없음.")
                     break
@@ -198,7 +218,7 @@ class CretopCrawler(BaseCrawler):
                 for i in range(count):
                     btn = buttons.nth(i)
                     if btn.inner_text().strip() == str(target_page):
-                        time.sleep(1.0)
+                        time.sleep(0.5)
                         btn.click(force=True)
                         self.page.wait_for_load_state("networkidle")
                         try:
@@ -207,7 +227,7 @@ class CretopCrawler(BaseCrawler):
                                 timeout=10000
                             )
                         except: pass
-                        time.sleep(3.0)
+                        time.sleep(2.0)
                         break
             except: pass
 
@@ -236,32 +256,30 @@ class CretopCrawler(BaseCrawler):
                     self.log(f"▶ {current_page} 페이지 처리")
                     if self.page.is_closed(): break
                     
-                    time.sleep(2.0)
+                    time.sleep(1.0) # 기본 대기 약간 축소
                     
-                    # [핵심 수정] 데이터가 뜰 때까지 3번 재시도 (끈질기게 기다림)
+                    # 데이터 로딩 대기 (3회 재시도 유지)
                     items = []
                     for attempt in range(3):
                         try: 
-                            self.page.wait_for_selector('div.result-txt-wrap', timeout=20000) # 20초 대기
+                            self.page.wait_for_selector('div.result-txt-wrap', timeout=20000)
                             if self.page.locator('div.result-txt-wrap').count() < 5:
-                                time.sleep(3.0)
+                                time.sleep(2.0)
                         except: pass
 
                         soup = BeautifulSoup(self.page.content(), 'html.parser')
                         items = soup.select('div.result-txt-wrap')
                         
                         if items:
-                            break # 찾았으면 탈출
+                            break 
                         else:
                             self.log(f"⚠️ 데이터 감지 안됨. 재확인 중... ({attempt+1}/3)")
                             
-                            # 혹시 '페이지 만료' 텍스트가 있는지 확인
                             body_text = soup.get_text()
                             if "만료" in body_text or "로그인" in body_text:
-                                self.log("🚨 [페이지 만료] 감지됨! 봇을 종료합니다. (현재 페이지 저장 안함)")
-                                return # 종료해서 다음 실행 때 재시도하도록 유도
-                                
-                            time.sleep(5.0) # 5초 후 재시도
+                                self.log("🚨 [페이지 만료] 감지됨! 봇을 종료합니다.")
+                                return 
+                            time.sleep(3.0) 
 
                     if not items:
                         self.log("❌ 3회 재시도 실패. 데이터 없음. 종료.")
@@ -299,7 +317,8 @@ class CretopCrawler(BaseCrawler):
                     next_page_num = current_page + 1
                     is_next_group = (current_page % 10 == 0)
 
-                    time.sleep(random.uniform(2.0, 4.0))
+                    # 이동 전 대기 시간 조금 축소 (안전 범위 내)
+                    time.sleep(random.uniform(1.5, 3.0))
 
                     btn = None
                     if is_next_group:
@@ -314,20 +333,20 @@ class CretopCrawler(BaseCrawler):
                     
                     if btn and btn.count() > 0 and btn.is_visible():
                         self.log(f"다음 페이지({next_page_num}) 이동...")
-                        time.sleep(1.0)
+                        time.sleep(0.5)
                         btn.click(force=True)
                         
                         try:
                             js_check = f"() => document.querySelector('div.result-txt-wrap button span')?.innerText.trim() !== `{first_comp}`"
                             self.page.wait_for_function(js_check, timeout=15000)
                             current_page += 1
-                            time.sleep(random.uniform(2.0, 3.0))
+                            time.sleep(random.uniform(1.5, 2.5))
                         except:
                             self.log(f"❌ {next_page_num}페이지 로딩 실패")
                             try:
-                                time.sleep(5.0)
+                                time.sleep(3.0)
                                 btn.click(force=True)
-                                time.sleep(5.0)
+                                time.sleep(3.0)
                                 current_page += 1
                             except: break
                     else:
