@@ -26,6 +26,30 @@ class DataProcessor:
         text = re.sub(r'\((주|유|합|자|재|사|주식회사|유한회사|합자회사|사단법인|재단법인)\)', '', text)
         text = re.sub(r'주식회사|유한회사|합자회사|사단법인|재단법인', '', text)
         return text.strip()
+    
+    def _format_phone_number(self, raw_tel):
+        """0518040129 -> 051-804-0129 형태로 변환"""
+        if not raw_tel: return ""
+        
+        # 숫자만 남기기 (기존에 하이픈이 섞여있어도 일단 제거 후 규칙대로 재배치)
+        tel = re.sub(r'[^0-9]', '', str(raw_tel))
+        
+        # 1. 서울 (02) : 02-XXX-XXXX, 02-XXXX-XXXX
+        if tel.startswith('02'):
+            if len(tel) == 9: return f"{tel[:2]}-{tel[2:5]}-{tel[5:]}"
+            if len(tel) == 10: return f"{tel[:2]}-{tel[2:6]}-{tel[6:]}"
+            
+        # 2. 휴대폰/지역번호/인터넷전화 (010, 051, 070 등 3자리 국번)
+        elif len(tel) > 3 and tel.startswith('0'):
+            if len(tel) == 10: return f"{tel[:3]}-{tel[3:6]}-{tel[6:]}" # 051-804-0129
+            if len(tel) == 11: return f"{tel[:3]}-{tel[3:7]}-{tel[7:]}" # 010-1234-5678
+            
+        # 3. 전국 대표번호 (1588-XXXX 등 8자리)
+        elif len(tel) == 8 and tel.startswith('1'):
+             return f"{tel[:4]}-{tel[4:]}"
+             
+        # 매칭되는 규칙 없으면 원본 반환
+        return raw_tel
 
     def create_record(self, raw_company, raw_ceo, extra_data):
         # (기존 로직 동일)
@@ -53,6 +77,9 @@ class DataProcessor:
                 
                 if isinstance(value, (list, set)): str_val = ", ".join(list(value))
                 else: str_val = str(value)
+
+                if standard_key == '전화번호':
+                    str_val = self._format_phone_number(str_val)
                 
                 record[standard_key] = str_val.strip()
 
@@ -60,8 +87,6 @@ class DataProcessor:
 
     def send_to_gas(self, data_list):
         if not data_list: return None
-
-        # [삭제됨] 구조 샘플 출력 코드 제거
 
         max_retries = 5
         base_wait = 2
