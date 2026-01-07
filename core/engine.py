@@ -44,6 +44,17 @@ class GenericAsyncCrawler:
                 start = pagination.get('start', 1)
                 end = pagination.get('max_page', 10)
                 step = pagination.get('step', 1)
+
+                checkpoint_key = f"{self.name}_last_page"
+                last_page = await self.state_manager.get_checkpoint(checkpoint_key)
+
+                if last_page:
+                    start = int(last_page)
+                    self.logger.info(f"🔄 이어하기 감지: {start}페이지부터 다시 시작합니다. (Last: {last_page})")
+
+                if start > end:
+                     self.logger.info(f"✨ 이미 모든 페이지({end}) 수집이 완료되었습니다.")
+                     return
                 
                 for page in range(start, end + 1, step):
                     tasks.append(self.process_page(page))
@@ -110,6 +121,9 @@ class GenericAsyncCrawler:
                     first_item_check = f" (First: {first_item_name})"
 
                 self.logger.info(f"Page {page_num}: Extracted {len(extracted_items)} items. {new_count} new, {duplicate_count} skipped.{first_item_check}")
+
+                checkpoint_key = f"{self.name}_last_page"
+                await self.state_manager.save_checkpoint(checkpoint_key, page_num)
 
                 await asyncio.sleep(random.uniform(0.5, 1.5))
 
