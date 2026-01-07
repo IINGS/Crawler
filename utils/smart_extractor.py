@@ -16,7 +16,7 @@ class SmartExtractor:
         
         self.email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
         
-        # [핵심 수정 1] 존재하는 국번만 허용 (Whitelist)
+        # 존재하는 국번만 허용 (Whitelist)
         # 잘못된 국번(045, 069, 023 등)이 들어오는 것을 방지
         # 02: 서울
         # 031~033: 경기/인천/강원
@@ -66,7 +66,7 @@ class SmartExtractor:
             'price'
         ]
         
-        # [핵심 수정 2] 쓰레기 번호 목록 강화
+        # 쓰레기 번호 목록
         # 웹사이트 템플릿에 자주 쓰이는 가짜 번호들
         self.garbage_full_numbers = [
             '02-1212-2121', '02-1231-2132', '010-101-0101', '010-0000-0000', 
@@ -230,7 +230,7 @@ class SmartExtractor:
             
             full_number = self.normalize_phone(area, mid, end)
 
-            # [수정] 가짜 번호 판별 시 full_number도 함께 전달
+            # 가짜 번호 판별 시 full_number도 함께 전달
             if self.is_garbage_number(mid, end, full_number):
                 continue
 
@@ -314,3 +314,20 @@ class SmartExtractor:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             results = list(executor.map(self.process_company, data_list))
         return results
+    
+    def extract_contacts(self, text):
+        """
+        GenericAsyncCrawler 엔진과의 호환성을 위한 래퍼 메서드
+        텍스트 덩어리를 받아 이메일/전화번호/팩스를 추출하여 딕셔너리로 반환
+        """
+        info = {'email': set(), 'tel': set(), 'fax': set()}
+        
+        # 기존 로직 재사용
+        self.extract_info_from_text(text, info)
+        
+        # 세트(Set)를 문자열로 변환하여 반환
+        return {
+            "이메일": ", ".join(sorted(list(info['email']))),
+            "전화번호": ", ".join(sorted(list(info['tel']))),
+            "팩스": ", ".join(sorted(list(info['fax'])))
+        }

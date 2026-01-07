@@ -1,37 +1,41 @@
-#config.py
+import os
+from dotenv import load_dotenv
 
-"""
-사전 설정할 파일.
-Google Sheets랑 연동된 Google Apps Script 배포 후 URL 복사 필요 (현재 URL은 테스트 종료시 파기할 것임)
-USER_AGENTS는 건들 필요 굳이 없음
-"""
+load_dotenv()
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-# 구글 앱스 스크립트 배포 URL (배포 후 주소 확인 필수)
-WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxIh40gm3y_ork08OQQFfSTXun2ZljiviwHAM6omhaehAIH1o0xoeplAUbrpYqOD4QoRA/exec'
+if not WEBHOOK_URL:
+    raise ValueError("WEBHOOK_URL이 설정되지 않았습니다. .env 파일을 확인하세요.")
 
-# 크롤링 봇 탐지 회피용 헤더 (PC 버전 10종) 많을수록 탐지 확률 감소
+
+# User-Agent 리스트 (Rotation용)
 USER_AGENTS = [
-    # Chrome (Windows)
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    
-    # Chrome (Mac)
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-    
-    # Edge (Windows)
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0',
-    
-    # Safari (Mac)
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15',
-    
-    # Firefox (Windows)
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
-    
-    # Whale (Korean Browser - 한국 사이트 접속 시 자연스러움)
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.128 Whale/3.25.232.19 Safari/537.36',
-    
-    # Chrome (Windows 11)
-    'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 ]
+
+# 공통 헤더
+DEFAULT_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+}
+
+# 브라우저 설정 (Playwright)
+BROWSER_CONFIG = {
+    "headless": False, # 디버깅 시 False
+    #"channel": "chrome",
+    "args": [
+        "--start-maximized",
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+        "--disable-infobars",
+        "--disable-gpu", 
+        "--disable-dev-shm-usage",
+        "--ignore-certificate-errors", 
+        "--enable-features=NetworkService,NetworkServiceInProcess"
+    ]
+}
