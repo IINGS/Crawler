@@ -98,7 +98,7 @@ class GenericAsyncCrawler:
                     if await self.state_manager.is_new(item):
                         if self.config.get('deep_crawl', False) and item.get('홈페이지'):
                             loop = asyncio.get_running_loop()
-                            item = await loop.run_in_executor(None, self.extractor.process_company, item)
+                            item = await self.extractor.process_company(item)
                         new_count += 1
                         await self.processor.process(item)
                     else:

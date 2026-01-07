@@ -1,6 +1,6 @@
 # smart_extractor.py
 import re
-import requests
+import aiohttp
 import concurrent.futures
 import time
 import random
@@ -8,7 +8,8 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
 class SmartExtractor:
-    def __init__(self):
+    def __init__(self, session=None):
+        self.session = session
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
@@ -104,25 +105,35 @@ class SmartExtractor:
 
         return False
 
-    def get_text_with_frames(self, soup, base_url):
+    async def _fetch_text(self, url, session):
+        """내부 헬퍼: URL에서 텍스트만 안전하게 가져옴"""
+        try:
+            async with session.get(url, headers=self.headers, timeout=5) as resp:
+                if resp.status == 200:
+                    return await resp.text()
+        except:
+            pass
+        return ""
+
+    async def get_text_with_frames(self, soup, base_url, session):
         text_content = ""
         try:
             frames = soup.select('frame, iframe')
             if not frames: return ""
+            
             for frame in frames:
                 src = frame.get('src')
                 if not src: continue
                 frame_url = urljoin(base_url, src)
-                try:
-                    frame_resp = requests.get(frame_url, headers=self.headers, timeout=5)
-                    if frame_resp.status_code == 200:
-                        frame_soup = BeautifulSoup(frame_resp.text, 'html.parser')
-                        text_content += " " + frame_soup.get_text(separator=' ', strip=True)
-                except: pass
+                
+                html = await self._fetch_text(frame_url, session)
+                if html:
+                    frame_soup = BeautifulSoup(html, 'html.parser')
+                    text_content += " " + frame_soup.get_text(separator=' ', strip=True)
         except: pass
         return text_content
     
-    def get_js_content(self, soup, base_url):
+    async def get_js_content(self, soup, base_url, session):
         js_text = ""
         try:
             scripts = soup.select('script[src]')
@@ -138,12 +149,10 @@ class SmartExtractor:
                     continue
 
                 js_url = urljoin(base_url, src)
-                try:
-                    js_resp = requests.get(js_url, headers=self.headers, timeout=5)
-                    if js_resp.status_code == 200:
-                        js_text += " " + js_resp.text
-                except:
-                    continue
+                
+                content = await self._fetch_text(js_url, session)
+                if content:
+                    js_text += " " + content
         except:
             pass
         return js_text
@@ -247,38 +256,47 @@ class SmartExtractor:
             else:
                 info_dict['tel'].add(full_number)
 
-    def extract_from_url(self, url):
+    async def extract_from_url(self, url):
         info = {'email': set(), 'tel': set(), 'fax': set()}
         
         if not url: return False, info
         if not url.startswith('http'): url = 'http://' + url
 
+        should_close_session = False
+        session = self.session
+        if session is None:
+            session = aiohttp.ClientSession()
+            should_close_session = True
+
         try:
-            resp = requests.get(url, headers=self.headers, timeout=10)
-            resp.encoding = resp.apparent_encoding 
-            
-            if resp.status_code != 200: return False, info
+            async with session.get(url, headers=self.headers, timeout=10) as resp:
+                if resp.status != 200: 
+                    return False, info
 
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            
-            self.extract_links_from_soup(soup, info)
-            
-            visible_text = soup.get_text(separator=' ', strip=True)
-            frame_text = self.get_text_with_frames(soup, url)
-            js_text = self.get_js_content(soup, url) 
-            
-            raw_source_text = resp.text 
+                raw_source_text = await resp.text()
 
-            combined_text = f"{visible_text} {frame_text} {raw_source_text} {js_text}"
-            
-            self.extract_info_from_text(combined_text, info)
-                    
+                soup = BeautifulSoup(raw_source_text, 'html.parser')
+                
+                self.extract_links_from_soup(soup, info)
+                
+                visible_text = soup.get_text(separator=' ', strip=True)
+                
+                frame_text = await self.get_text_with_frames(soup, url, session)
+                js_text = await self.get_js_content(soup, url, session) 
+                
+                combined_text = f"{visible_text} {frame_text} {raw_source_text} {js_text}"
+                
+                self.extract_info_from_text(combined_text, info)
+                        
             return True, info
 
         except Exception:
             return False, info
+        finally:
+            if should_close_session:
+                await session.close()
 
-    def process_company(self, company_data):
+    async def process_company(self, company_data):
         url = company_data.get('홈페이지', '')
 
         clean_url = str(url).strip().lower()
@@ -291,7 +309,7 @@ class SmartExtractor:
         contact_info = {'email': set(), 'tel': set(), 'fax': set()}
 
         if url:
-            success, contact_info = self.extract_from_url(url)
+            success, contact_info = await self.extract_from_url(url)
 
         existing_email = company_data.get('이메일', '')
         if existing_email: contact_info['email'].add(existing_email)
@@ -309,11 +327,6 @@ class SmartExtractor:
             company_data['팩스'] = ", ".join(sorted(list(contact_info['fax'])))[:100]
 
         return company_data
-
-    def process_batch(self, data_list, max_workers=10):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(executor.map(self.process_company, data_list))
-        return results
     
     def extract_contacts(self, text):
         """
