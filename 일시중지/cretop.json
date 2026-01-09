@@ -1,0 +1,43 @@
+{
+  "name": "크레탑",
+  "domain_group": "cretop_com",
+  "type": "browser",
+  "concurrency": 1,
+  "hooks_file": "hooks/cretop_hook.py",
+  "request": {
+    "url": "https://www.cretop.com/ET/SS/ETSS070M1",
+    "method": "GET",
+    "actions": [
+      { "type": "wait", "selector": "xpath=//*[contains(text(), '정상')]" },
+      { "type": "click", "selector": "xpath=(//*[contains(text(), '정상')])[last()]/preceding::input[@type='checkbox'][1]" },
+      { "type": "click", "selector": "xpath=(//*[contains(text(), '소기업')])[last()]/preceding::input[@type='checkbox'][1]" },
+      { "type": "click", "selector": "xpath=(//*[contains(text(), '개인사업자')])[last()]/preceding::input[@type='checkbox'][1]" },
+      { "type": "sleep", "seconds": 2 },
+      { "type": "mouse_move", "selector": "xpath=//button[contains(., '조회하기')]" },
+      { "type": "hover", "selector": "xpath=//button[contains(., '조회하기')]" },
+      { "type": "sleep", "seconds": 0.5 },
+      { "type": "click", "selector": "xpath=//button[contains(., '조회하기')]" },
+      { "type": "wait", "selector": "div.result-txt-wrap" },
+      { "type": "click", "selector": "#pageCount" },
+      { "type": "press", "key": "ArrowDown" },
+      { "type": "press", "key": "ArrowDown" },
+      { "type": "press", "key": "ArrowDown" },
+      { "type": "press", "key": "Enter" },
+      { "type": "wait", "selector": "div.result-txt-wrap" },
+      { "type": "sleep", "seconds": 1 }
+    ],
+    "pagination": {
+      "start": 1,
+      "max_page": 700,
+      "step": 1
+    }
+  },
+  "extraction": {
+    "strategy": "css",
+    "base_selector": "div.result-txt-wrap",
+    "fields": {
+      "기업명": "button.result-layer-open span",
+      "_raw_html": "self > inner_html"
+    }
+  }
+}

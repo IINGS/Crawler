@@ -1,0 +1,36 @@
+{
+  "name": "메인비즈",
+  "domain_group": "mainbiz",
+  "type": "html",
+  "concurrency": 3,
+  "request": {
+    "url": "https://www.smes.go.kr/mainbiz/usr/innovation/list.do",
+    "method": "POST",
+    "data": {
+      "pageNo": "{page}", 
+      "pageSize": "40",
+      "cd_area": "", 
+      "str_type": "", 
+      "cd_searchType": "", 
+      "str_searchKey": ""
+    },
+    "pagination": {
+      "param": "pageNo",
+      "start": 1,
+      "max_page": 636, 
+      "step": 1
+    }
+  },
+  "extraction": {
+    "strategy": "css",
+    "base_selector": "table.list_board_table tbody tr",
+    "fields": {
+      "기업명": "td:nth-of-type(2) span.td_obj_text_value",
+      "지역": "td:nth-of-type(3) span.td_obj_text_value",
+      "대표자명": "td:nth-of-type(4) span.td_obj_text_value",
+      "기술": "td:nth-of-type(5) span.td_obj_text_value",
+      "업종": "td:nth-of-type(6) span.td_obj_text_value"
+    },
+    "smart_extraction": true 
+  }
+}

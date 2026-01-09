@@ -1,0 +1,34 @@
+{
+  "name": "이노비즈",
+  "domain_group": "innobiz_net",
+  "type": "html",
+  "deep_crawl": "true",
+  "hooks_file": "hooks/innobiz_hook.py", 
+  "request": {
+    "url": "https://www.innobiz.net/company/company2_list.asp",
+    "method": "GET",
+    "params": {
+      "Page": "{page}"
+    },
+    "pagination": {
+      "param": "Page",
+      "start": 1,
+      "max_page": 1553,
+      "step": 1
+    }
+  },
+  "extraction": {
+    "strategy": "css",
+    "base_selector": "table.table_list_style1 tbody tr",
+    "fields": {
+      "기업명": "td:nth-of-type(2)",
+      "대표자명": "td:nth-of-type(3)",
+      "지역": "td:nth-of-type(4)",
+      "기술": "td:nth-of-type(5)",
+      "업종": "td:nth-of-type(6)",
+      
+      "_raw_html": "self > inner_html" 
+    },
+    "smart_extraction": true
+  }
+}
